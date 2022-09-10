@@ -13,6 +13,8 @@ from torchvision import transforms
 from torchvision.utils import make_grid
 from torchvision.io import read_image, ImageReadMode
 
+from PIL import Image
+
 import time
 import os
 import copy
@@ -43,7 +45,8 @@ class ParkinsonImageDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.data.iloc[idx, 0])
-        image = read_image(img_path, ImageReadMode.RGB)
+        image = Image.open(img_path)
+        image = image.convert('RGB')
         label_value = self.data.iloc[idx, 1]
 
         assert (img_path.find(label_value) != -1)
@@ -62,7 +65,7 @@ def create_data(X, y):
 
 def split_train_data(df):
     df = df.sample(frac=1)
-    num_val = int(len(df) * 0.2)
+    num_val = int(len(df) * 0.3)
 
     val = df.iloc[:num_val]
     train = df.iloc[num_val:]
@@ -103,7 +106,7 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, dataset_siz
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs.float())
+                    outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels)
 
@@ -195,13 +198,28 @@ def test_model(model, test_data, test_set_sizes):
 if __name__ == "__main__":
     transforms = {
         "train": transforms.Compose([
-            transforms.Resize((192, 192))
+            transforms.Resize((192, 192)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
         ]),
         "val": transforms.Compose([
-            transforms.Resize((192, 192))
+            transforms.Resize((192, 192)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
         ]),
         "test": transforms.Compose([
-            transforms.Resize((192, 192))
+            transforms.Resize((192, 192)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
         ])
     }
 
