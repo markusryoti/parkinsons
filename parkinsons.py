@@ -5,7 +5,7 @@ import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.models
 
-from torchvision.models import ResNet18_Weights
+from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet152_Weights
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 from torch.utils.data import Dataset, DataLoader
@@ -30,6 +30,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 if str(device) == "cuda:0":
     print('Cuda available')
+    print()
 
 
 class ParkinsonImageDataset(Dataset):
@@ -81,6 +82,9 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, dataset_siz
     best_model_wts = copy.deepcopy(model.state_dict())
     best_acc = 0.0
 
+    train_losses = []
+    val_losses = []
+
     for epoch in range(num_epochs):
         print(f'Epoch {epoch}/{num_epochs - 1}')
         print('-' * 10)
@@ -125,6 +129,11 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, dataset_siz
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
+            if phase == 'train':
+                train_losses.append(epoch_loss)
+            else:
+                val_losses.append(epoch_loss)
+
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
             # deep copy the model
@@ -142,36 +151,51 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, dataset_siz
     # load best model weights
     model.load_state_dict(best_model_wts)
 
+    save_losses_fig(train_losses, val_losses)
+
     return model
 
 
-def visualize_model(model, dataloaders, class_names, num_images=6):
-    was_training = model.training
+def save_losses_fig(train_losses, val_losses):
+    plt.plot(np.arange(len(train_losses)), train_losses, label='train_loss')
+    plt.plot(val_losses, label='val_loss')
+    plt.legend()
+    plt.savefig('results/losses.png')
+
+
+def visualize_model(model, test_data, num_images=6):
     model.eval()
     images_so_far = 0
     fig = plt.figure()
 
     with torch.no_grad():
-        for i, (inputs, labels) in enumerate(dataloaders['val']):
+        for i, (inputs, labels) in enumerate(test_data):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
-            outputs = model(inputs.float())
+            outputs = model(inputs)
             _, preds = torch.max(outputs, 1)
 
             for j in range(inputs.size()[0]):
                 images_so_far += 1
                 ax = plt.subplot(num_images//2, 2, images_so_far)
                 ax.axis('off')
-                ax.set_title(f'predicted: {class_names[preds[j].item()]}')
-                imshow(inputs.cpu().data[j])
+                ax.set_title(
+                    f'pred/corr: {ParkinsonImageDataset.CLASSES[preds[j].item()]}, {ParkinsonImageDataset.CLASSES[labels[j].item()]}')
+                # ax.plot()
+                implot(inputs.cpu().data[j])
 
                 if images_so_far == num_images:
-                    model.train(mode=was_training)
-                    plt.show()
+                    plt.savefig('results/predictions.png')
                     return
 
-        model.train(mode=was_training)
+
+def implot(img):
+    MEAN = torch.tensor([0.485, 0.456, 0.406])
+    STD = torch.tensor([0.229, 0.224, 0.225])
+
+    img = img * STD[:, None, None] + MEAN[:, None, None]
+    plt.imshow(img.numpy().transpose(1, 2, 0))
 
 
 def test_model(model, test_data, test_set_sizes):
@@ -184,7 +208,7 @@ def test_model(model, test_data, test_set_sizes):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
-            outputs = model(inputs.float())
+            outputs = model(inputs)
             _, preds = torch.max(outputs, 1)
 
             running_corrects += torch.sum(preds == labels.data)
@@ -196,9 +220,12 @@ def test_model(model, test_data, test_set_sizes):
 
 
 if __name__ == "__main__":
+    IMG_SIZE = (144, 144)
+
     transforms = {
         "train": transforms.Compose([
-            transforms.Resize((192, 192)),
+            transforms.Resize(IMG_SIZE),
+            # transforms.CenterCrop(IMG_SIZE),
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=[0.485, 0.456, 0.406],
@@ -206,7 +233,8 @@ if __name__ == "__main__":
             ),
         ]),
         "val": transforms.Compose([
-            transforms.Resize((192, 192)),
+            transforms.Resize(IMG_SIZE),
+            # transforms.CenterCrop(IMG_SIZE),
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=[0.485, 0.456, 0.406],
@@ -214,7 +242,8 @@ if __name__ == "__main__":
             ),
         ]),
         "test": transforms.Compose([
-            transforms.Resize((192, 192)),
+            transforms.Resize(IMG_SIZE),
+            # transforms.CenterCrop(IMG_SIZE),
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=[0.485, 0.456, 0.406],
@@ -234,17 +263,21 @@ if __name__ == "__main__":
         'test': ParkinsonImageDataset(test_data, transforms['test'])
     }
 
+    batch_size = 6
+
     dataloaders = {
-        'train': DataLoader(image_datasets['train'], batch_size=6, shuffle=True),
-        'val': DataLoader(image_datasets['val'], batch_size=6, shuffle=True),
-        'test': DataLoader(image_datasets['test'], batch_size=6, shuffle=True)
+        'train': DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True),
+        'val': DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=True),
+        'test': DataLoader(image_datasets['test'], batch_size=batch_size)
     }
 
     dataset_sizes = {x: len(image_datasets[x])
                      for x in ['train', 'val', 'test']}
     class_names = ParkinsonImageDataset.CLASSES
 
-    model_ft = models.resnet18(weights=ResNet18_Weights.DEFAULT)
+    # model_ft = models.resnet18(weights=ResNet18_Weights.DEFAULT)
+    model_ft = models.resnet50(weights=ResNet50_Weights.DEFAULT)
+    # model_ft = models.resnet152(weights=ResNet152_Weights.DEFAULT)
     num_ftrs = model_ft.fc.in_features
 
     model_ft.fc = nn.Linear(num_ftrs, 2)
@@ -255,13 +288,13 @@ if __name__ == "__main__":
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 
-    # Decay LR by a factor of 0.1 every 7 epochs
+    # Decay LR by a factor of 0.1 every x epochs
     exp_lr_scheduler = lr_scheduler.StepLR(
-        optimizer_ft, step_size=1, gamma=0.1)
+        optimizer_ft, step_size=5, gamma=0.1)
 
     model_ft = train_model(model_ft, dataloaders, criterion, optimizer_ft,
-                           exp_lr_scheduler, dataset_sizes, num_epochs=5)
+                           exp_lr_scheduler, dataset_sizes, num_epochs=25)
 
-    # visualize_model(model_ft, dataloaders, class_names)
+    visualize_model(model_ft, dataloaders['test'])
 
     test_model(model_ft, dataloaders['test'], dataset_sizes['test'])
