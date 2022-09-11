@@ -1,5 +1,7 @@
 import os
+import pandas as pd
 import matplotlib.pyplot as plt
+import torch
 
 
 def get_files(dpath):
@@ -31,3 +33,27 @@ def imshow(inp, title=None):
 
     plt.pause(0.001)  # pause a bit so that plots are updated
     # plt.show()
+
+
+def load_model(fpath, model_class):
+    loaded_model = model_class()
+    loaded_model.load_state_dict(torch.load(fpath))
+    loaded_model.eval()
+
+    return loaded_model
+
+
+def create_data(X, y):
+    return pd.DataFrame({'filename': X, 'healthy': y})
+
+
+def split_train_data(df):
+    df = df.sample(frac=1)
+    num_val = int(len(df) * 0.3)
+
+    val = df.iloc[:num_val]
+    train = df.iloc[num_val:]
+
+    assert (len(val) + len(train) == len(df))
+
+    return train, val
