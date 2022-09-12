@@ -251,6 +251,22 @@ def get_transforms(std_vec, mean_vec):
     return transforms
 
 
+def do_predict(model, img):
+    mean_vec = torch.tensor([0.485, 0.456, 0.406])
+    std_vec = torch.tensor([0.229, 0.224, 0.225])
+
+    test_transform = get_transforms(std_vec, mean_vec)['test']
+
+    transformed = test_transform(img)
+    transformed = transformed.unsqueeze(0)
+
+    with torch.no_grad():
+        output = model(transformed)
+        _, pred = torch.max(output, 1)
+
+    return ParkinsonImageDataset.CLASSES[pred.item()]
+
+
 if __name__ == "__main__":
 
     X_train, X_test, y_train, y_test = get_files('data/drawings')
