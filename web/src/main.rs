@@ -37,41 +37,60 @@ fn file_upload_form() -> Html {
 
         Callback::from(move |e: FocusEvent| {
             e.prevent_default();
-
             let prediction = prediction.clone();
 
             if let Some(input) = input_ref.cast::<HtmlInputElement>() {
-                let files: FileList = input.files().unwrap();
-                let file: File = files.get(0).unwrap();
-                let form_data: Result<FormData, JsValue> = FormData::new();
-
-                if let Ok(f_data) = form_data {
-                    let blob: Result<Blob, JsValue> = file.slice();
-
-                    if let Ok(b) = blob {
-                        let filled_form: Result<(), JsValue> = f_data.append_with_blob("img", &b);
-
-                        if let Ok(_filled_form) = filled_form {
-                            wasm_bindgen_futures::spawn_local(async move {
-                                let res: ApiResponse =
-                                    Request::post("http://127.0.0.1:5000/predict")
-                                        .body(f_data)
-                                        .send()
-                                        .await
-                                        .unwrap()
-                                        .json()
-                                        .await
-                                        .unwrap();
-
-                                log::info!("{}", res.prediction);
-                                prediction.set(res.prediction);
-                            });
-                        }
-                    }
+                let blob = get_img_blob(input);
+                let blob = match blob {
+                    Ok(b) => b,
+                    Err(_) => return,
                 };
+
+                let form_data_res: Result<FormData, JsValue> = FormData::new();
+
+                let f_data = match form_data_res {
+                    Ok(fd) => fd,
+                    Err(_) => return,
+                };
+
+                let filled_form_res: Result<(), JsValue> = f_data.append_with_blob("img", &blob);
+
+                match filled_form_res {
+                    Ok(_) => {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let res = do_request(f_data).await;
+                            log::info!("{}", res.prediction);
+                            prediction.set(res.prediction);
+                        });
+                    }
+                    Err(_) => return,
+                }
             }
         })
     };
+
+    fn get_img_blob(input: HtmlInputElement) -> Result<Blob, ()> {
+        let files: FileList = input.files().unwrap();
+        let file: File = files.get(0).unwrap();
+
+        let blob_res: Result<Blob, JsValue> = file.slice();
+
+        match blob_res {
+            Ok(ff) => Ok(ff),
+            Err(_) => Err(()),
+        }
+    }
+
+    async fn do_request(f_data: FormData) -> ApiResponse {
+        Request::post("http://127.0.0.1:5000/predict")
+            .body(f_data)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
 
     html! {
         <>
