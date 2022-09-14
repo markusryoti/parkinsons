@@ -20,14 +20,13 @@ def predict():
 
     if request.method == 'POST':
         img_data = request.files.get('img')
-        app.logger.info('form data: %s', img_data)
 
         img = Image.open(img_data)
         img = img.convert('RGB')
 
         pred = do_predict(model, img)
 
-        return jsonify(pred)
+        return jsonify({'prediction': pred})
 
 
 app.run(host='localhost', port=5000)
