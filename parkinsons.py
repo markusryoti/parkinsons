@@ -31,6 +31,9 @@ if str(device) == "cuda:0":
     print('Cuda available')
     print()
 
+MEAN_VEC = torch.tensor([0.485, 0.456, 0.406])
+STD_VEC = torch.tensor([0.229, 0.224, 0.225])
+
 
 class ParkinsonImageDataset(Dataset):
     CLASSES = {0: "healthy", 1: "parkinson"}
@@ -146,7 +149,7 @@ def save_losses_fig(train_losses, val_losses):
     plt.savefig('results/losses.png')
 
 
-def visualize_model(model, test_data, std_vec, mean_vec, num_images=6):
+def visualize_model(model, test_data, num_images=6):
     model.eval()
     images_so_far = 0
     fig = plt.figure()
@@ -166,7 +169,7 @@ def visualize_model(model, test_data, std_vec, mean_vec, num_images=6):
                 ax.set_title(
                     f'pred/corr: {ParkinsonImageDataset.CLASSES[preds[j].item()]}, {ParkinsonImageDataset.CLASSES[labels[j].item()]}')
 
-                implot(inputs.cpu().data[j], std_vec, mean_vec)
+                implot(inputs.cpu().data[j], STD_VEC, MEAN_VEC)
 
                 if images_so_far == num_images:
                     plt.savefig('results/predictions.png')
@@ -218,7 +221,7 @@ class ParkinsonModel(nn.Module):
         return self.model_ft(x.to(device))
 
 
-def get_transforms(std_vec, mean_vec):
+def get_transforms():
     IMG_SIZE = (144, 144)
 
     transforms = {
@@ -226,24 +229,24 @@ def get_transforms(std_vec, mean_vec):
             torchvision.transforms.Resize(IMG_SIZE),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
-                mean=mean_vec,
-                std=std_vec,
+                mean=MEAN_VEC,
+                std=STD_VEC,
             ),
         ]),
         "val": torchvision.transforms.Compose([
             torchvision.transforms.Resize(IMG_SIZE),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
-                mean=mean_vec,
-                std=std_vec,
+                mean=MEAN_VEC,
+                std=STD_VEC,
             ),
         ]),
         "test": torchvision.transforms.Compose([
             torchvision.transforms.Resize(IMG_SIZE),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
-                mean=mean_vec,
-                std=std_vec,
+                mean=MEAN_VEC,
+                std=STD_VEC,
             ),
         ])
     }
@@ -252,10 +255,7 @@ def get_transforms(std_vec, mean_vec):
 
 
 def do_predict(model, img):
-    mean_vec = torch.tensor([0.485, 0.456, 0.406])
-    std_vec = torch.tensor([0.229, 0.224, 0.225])
-
-    test_transform = get_transforms(std_vec, mean_vec)['test']
+    test_transform = get_transforms()['test']
 
     transformed = test_transform(img)
     transformed = transformed.unsqueeze(0)
@@ -274,13 +274,7 @@ if __name__ == "__main__":
     train_data, val_data = split_train_data(train_data)
     test_data = create_data(X_test, y_test)
 
-    # plot_sample_distribution(train_data)
-    # plot_sample_distribution(val_data)
-
-    mean_vec = torch.tensor([0.485, 0.456, 0.406])
-    std_vec = torch.tensor([0.229, 0.224, 0.225])
-
-    transforms = get_transforms(std_vec, mean_vec)
+    transforms = get_transforms()
 
     image_datasets = {
         'train': ParkinsonImageDataset(train_data, transforms['train']),
@@ -293,7 +287,7 @@ if __name__ == "__main__":
     dataloaders = {
         'train': DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True),
         'val': DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=True),
-        'test': DataLoader(image_datasets['test'], batch_size=batch_size)
+        'test': DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=True)
     }
 
     dataset_sizes = {x: len(image_datasets[x])
@@ -308,9 +302,9 @@ if __name__ == "__main__":
         optimizer_ft, step_size=5, gamma=0.1)
 
     model = train_model(model_ft, dataloaders, criterion, optimizer_ft,
-                        exp_lr_scheduler, dataset_sizes, num_epochs=25)
+                        exp_lr_scheduler, dataset_sizes, num_epochs=15)
 
-    visualize_model(model, dataloaders['test'], std_vec, mean_vec, batch_size)
+    visualize_model(model, dataloaders['test'], batch_size)
 
     test_model(model, dataloaders['test'], dataset_sizes['test'])
 

@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use gloo_net::http::Request;
 use serde::Deserialize;
 use wasm_bindgen::JsValue;

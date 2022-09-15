@@ -13,3 +13,9 @@ Accuracy with _Resnet50_ based model ~85 %
 ### Training losses
 
 ![Losses](results/losses.png 'a title')
+
+## TODO
+
+- [ ] Split training and testing data better - should always see similar number of spirals and waves, healthy and not healthy ones
+- [ ] Code cleanup
+- [ ] Deploy
