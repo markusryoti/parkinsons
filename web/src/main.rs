@@ -1,7 +1,9 @@
+use std::error::Error;
+
 use gloo_net::http::Request;
 use serde::Deserialize;
 use wasm_bindgen::JsValue;
-use web_sys::{Blob, File, FileList, FormData, HtmlInputElement};
+use web_sys::{Blob, File, FileList, FormData, HtmlInputElement, Url};
 use yew::prelude::*;
 
 #[derive(Clone, PartialEq, Deserialize)]
@@ -14,18 +16,28 @@ fn file_upload_form() -> Html {
     let input_ref = use_node_ref();
     let prediction = use_state(|| "".to_string());
     let file_name = use_state(|| "".to_string());
+    let image_preview = use_state(|| "".to_string());
 
     let on_file_add: Callback<Event> = {
         let input_ref = input_ref.clone();
         let file_name = file_name.clone();
+        let image_preview = image_preview.clone();
+        let prediction = prediction.clone();
 
         Callback::from(move |_e: Event| {
             let input_ref = input_ref.clone();
             let file_name = file_name.clone();
+            let image_preview = image_preview.clone();
+            let prediction = prediction.clone();
 
             if let Some(input) = input_ref.cast::<HtmlInputElement>() {
-                let files: FileList = input.files().unwrap();
-                let file: File = files.get(0).unwrap();
+                let file = get_file_obj(&input).unwrap();
+                let b = get_img_blob(&input).unwrap();
+
+                let d_url = Url::create_object_url_with_blob(&b).unwrap();
+
+                image_preview.set(d_url);
+                prediction.set("".to_string());
                 file_name.set(file.name());
             }
         })
@@ -40,7 +52,7 @@ fn file_upload_form() -> Html {
             let prediction = prediction.clone();
 
             if let Some(input) = input_ref.cast::<HtmlInputElement>() {
-                let blob = get_img_blob(input);
+                let blob = get_img_blob(&input);
                 let blob = match blob {
                     Ok(b) => b,
                     Err(_) => return,
@@ -59,7 +71,7 @@ fn file_upload_form() -> Html {
                     Ok(_) => {
                         wasm_bindgen_futures::spawn_local(async move {
                             let res = do_request(f_data).await;
-                            log::info!("{}", res.prediction);
+                            log::info!("prediction: {}", res.prediction);
                             prediction.set(res.prediction);
                         });
                     }
@@ -69,10 +81,15 @@ fn file_upload_form() -> Html {
         })
     };
 
-    fn get_img_blob(input: HtmlInputElement) -> Result<Blob, ()> {
+    fn get_file_obj(input: &HtmlInputElement) -> Result<File, ()> {
         let files: FileList = input.files().unwrap();
         let file: File = files.get(0).unwrap();
 
+        Ok(file)
+    }
+
+    fn get_img_blob(input: &HtmlInputElement) -> Result<Blob, ()> {
+        let file = get_file_obj(&input).unwrap();
         let blob_res: Result<Blob, JsValue> = file.slice();
 
         match blob_res {
@@ -97,26 +114,36 @@ fn file_upload_form() -> Html {
             <form onsubmit={on_form_submit}>
                 <h4 class="subtitle">{"Add image"}</h4>
 
-                <div class="file has-name">
-                    <label class="file-label">
-                        <input class="file-input" type="file" name="resume" ref={&input_ref} onchange={on_file_add}/>
-                        <span class="file-cta">
-                        <span class="file-icon">
-                            <i class="fas fa-upload"></i>
-                        </span>
-                        <span class="file-label">
-                            { "Choose a file" }
-                        </span>
-                        </span>
-                        <span class="file-name">
-                        { (*file_name).clone() }
-                        </span>
-                    </label>
+                <div class="m-2">
+                    <div class="file">
+                        <label class="file-label">
+                            <input class="file-input" type="file" ref={&input_ref} onchange={on_file_add}/>
+                            <span class="file-cta">
+                            <span class="file-icon">
+                                <i class="fas fa-upload"></i>
+                            </span>
+                            <span class="file-label">
+                                { "Choose a file" }
+                            </span>
+                            </span>
+                            <span class="file-name">
+                            { (*file_name).clone() }
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="m-2">
+                    <img src={ (*image_preview).clone() } />
                 </div>
 
                 <input type="submit" value="predict" class="button is-primary" />
             </form>
-            <div>{ (*prediction).clone() }</div>
+            <div class="m-2">
+                <p class="is-size-4">
+                    { (*prediction).clone() }
+                </p>
+            </div>
         </>
     }
 }
@@ -124,10 +151,12 @@ fn file_upload_form() -> Html {
 #[function_component(App)]
 fn app() -> Html {
     html! {
-        <>
-            <h1 class="title">{ "Parkinsons Classifier" }</h1>
-            <FileUploadForm/>
-        </>
+        <div class="is-flex is-justify-content-center">
+            <div class="is-flex is-flex-direction-column">
+                <h1 class="title">{ "Parkinsons Classifier" }</h1>
+                <FileUploadForm/>
+            </div>
+        </div>
     }
 }
 
